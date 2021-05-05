@@ -1,0 +1,67 @@
+version: "3.2"
+
+services:
+  reverse-proxy:
+    build: ./traefik
+    #image: traefik:v2.3
+    # Enables the web UI and tells Traefik to listen to docker
+    command:
+      # https://doc.traefik.io/traefik/reference/static-configuration/cli/
+      #- "--configFile=/etc/docker/traefik/traefik.toml"
+      - "--api.dashboard=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web-secure.address=:443"
+      - "--log.level=INFO"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.directory=/etc/traefik/"
+    labels:
+      # dynamic configuration (https://doc.traefik.io/traefik/reference/dynamic-configuration/docker/)
+      - "traefik.enable=true"
+      - "traefik.http.routers.reverse-proxy.entrypoints=web-secure"
+      - "traefik.http.routers.reverse-proxy.rule=PathPrefix(`/traefik`) || PathPrefix(`/api`)"
+      - "traefik.http.routers.reverse-proxy.service=api@internal"
+      - "traefik.http.routers.reverse-proxy.middlewares=traefik-strip"
+      - "traefik.http.middlewares.traefik-strip.stripprefix.prefixes=/traefik"
+      - "traefik.http.routers.reverse-proxy.tls=true"
+      # global redirect to https
+      - "traefik.http.routers.http-catchall.rule=hostregexp(`{host:.+}`)"
+      - "traefik.http.routers.http-catchall.entrypoints=web"
+      - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
+      # middleware redirect
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      #- "/var/docker/traefik/traefik.toml:/etc/docker/traefik/traefik.toml"  # container path should match --configFile
+    networks:
+      - web
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: jenkins
+    command:
+      - "--prefix=/jenkins"
+    expose:  # internal usage not available from the host
+      - "8080"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jenkins.rule=PathPrefix(`/jenkins`)"
+      - "traefik.http.routers.jenkins.entrypoints=web-secure"
+      - "traefik.http.routers.jenkins.tls=true"
+      - "traefik.http.services.jenkins.loadbalancer.server.port=8080"
+    restart: always
+    volumes:
+      - jenkins_home:/var/jenkins_home
+    networks:
+      - web
+
+volumes:
+  jenkins_home:
+
+networks:
+  web:
+    external: true
+

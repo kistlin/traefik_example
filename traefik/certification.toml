@@ -1,0 +1,3 @@
+[[tls.certificates]]
+  certFile = "/etc/traefik/localhost-server-signed.pem"
+  keyFile = "/etc/traefik/localhost-server.key"
